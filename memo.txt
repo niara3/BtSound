@@ -1,0 +1,19 @@
+case 1 btスピーカー
+[in 1] bluetooth a2dp
+[out 1] 本体スピーカー
+
+case 2 bt中継
+[in 1] bluetooth a2dp
+[out 1] bluetooth a2dp
+
+case 3 btミキシングスピーカー
+[in 1] bluetooth a2dp
+[in 2] bluetooth a2dp
+[out 1] 本体スピーカー
+
+case 4 btミキサー
+[in 1] bluetooth a2dp
+[in 2] bluetooth a2dp
+[out 1] bluetooth a2dp
+
+＊inに本体音声を加えるのもアリかも
