@@ -7,12 +7,45 @@ import android.util.*;
 public class EventCtrlService extends IntentService
 {
 	private static final String TAG = "";
-	public static final String EXTRA_NAME_MODE = "EXTRA_MODE";
-	public static final String EXTRA_MODE_INIT = "MODE_INIT";
-	
+	private static final String EXTRA_NAME_MODE = "EXTRA_MODE";
+	private static final String EXTRA_MODE_INIT = "MODE_INIT";
+	private static final String EXTRA_MODE_RECEIVER = "MODE_RECEIVER";
+
 	public EventCtrlService() // public & no arg
 	{
 		super("EventCtrlService");
+	}
+
+	public static void kickInit(Context inContext)
+	{
+		if (null == inContext)
+		{
+			Log.e(TAG, "EventCtrlService#kickInit inContext null");
+			return;
+		}
+		Intent intent = new Intent(inContext, EventCtrlService.class);
+		intent.putExtra(EXTRA_NAME_MODE, EXTRA_MODE_INIT);
+		try {
+			inContext.startService(intent);
+		} catch (SecurityException e) {
+			Log.e(TAG, "EventCtrlService#kickInit startService", e);
+		}
+	}
+
+	public static void kickReceiver(Context inContext)
+	{
+		if (null == inContext)
+		{
+			Log.e(TAG, "EventCtrlService#kickReceiver inContext null");
+			return;
+		}
+		Intent intent = new Intent(inContext, EventCtrlService.class);
+		intent.putExtra(EXTRA_NAME_MODE, EXTRA_MODE_RECEIVER);
+		try {
+			inContext.startService(intent);
+		} catch (SecurityException e) {
+			Log.e(TAG, "EventCtrlService#kickReceiver startService", e);
+		}
 	}
 
 	@Override
@@ -43,7 +76,8 @@ public class EventCtrlService extends IntentService
 			Log.e(TAG, "EventCtrlService#onHandleIntent extra mode null");
 			return;
 		}
-		if (0 == mode.compareTo(EXTRA_MODE_INIT))
+		if ((0 == mode.compareTo(EXTRA_MODE_INIT)) ||
+			(0 == mode.compareTo(EXTRA_MODE_RECEIVER)))
 		{
 			Log.d(TAG, "EventCtrlService#onHandleIntent " + mode);
 		}

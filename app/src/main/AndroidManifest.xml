@@ -29,6 +29,8 @@
 			android:name=".EventReceiver">
 			<intent-filter>
 				<action
+					android:name="android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED" />
+				<action
 					android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
 			</intent-filter>
 		</receiver>
