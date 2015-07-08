@@ -28,6 +28,8 @@ public class MainActivity extends Activity
 	{
 		Log.d(TAG, "MainActivity#onDestroy");
 		super.onDestroy();
+
+		EventCtrlService.kickTerm(this);
 	}
 
 	private void showBt()

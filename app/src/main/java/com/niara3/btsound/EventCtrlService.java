@@ -1,19 +1,46 @@
 package com.niara3.btsound;
 
+import android.bluetooth.*;
 import android.app.*;
 import android.content.*;
 import android.util.*;
+import java.io.*;
+import java.util.*;
 
 public class EventCtrlService extends IntentService
 {
 	private static final String TAG = "";
+	private static final String EMPTY_STRING = "";
+
+// Advanced Audio Distribution Profile (A2DP) AudioSource 	0000110A-0000-1000-8000-00805F9B34FB
+// Advanced Audio Distribution Profile (A2DP) AudioSink 	0000110B-0000-1000-8000-00805F9B34FB
+	private static final String BTSERVER_NAME = "BtSoud a2dp";
+	private static final UUID BTSERVER_UUID = UUID.fromString("0000110A-0000-1000-8000-00805F9B34FB");
+
 	private static final String EXTRA_NAME_MODE = "EXTRA_MODE";
-	private static final String EXTRA_MODE_INIT = "MODE_INIT";
-	private static final String EXTRA_MODE_RECEIVER = "MODE_RECEIVER";
+	private static final int EXTRA_MODE_UNKNOWN = -1;
+	private static final int EXTRA_MODE_INIT = 1;				// "MODE_INIT";
+	private static final int EXTRA_MODE_RECEIVER = 2;	// "MODE_RECEIVER";
+	private static final int EXTRA_MODE_TERM = 3;			// "MODE_TERM";
+	private static final String PREF_NAME = "pref";
+	private static final String PREF_KEY_BTADR = "BTADR";
+
+	private static final enum STATE {
+		UNKNOWN,
+		INIT,
+		START,
+		STOP,
+		END,
+	};
+
+	private String mBtAdr;
+	private BtAcceptThread mBtAcceptThread;
 
 	public EventCtrlService() // public & no arg
 	{
 		super("EventCtrlService");
+		mBtAdr = EMPTY_STRING;
+		mBtAcceptThread = null;
 	}
 
 	public static void kickInit(Context inContext)
@@ -48,6 +75,22 @@ public class EventCtrlService extends IntentService
 		}
 	}
 
+	public static void kickTerm(Context inContext)
+	{
+		if (null == inContext)
+		{
+			Log.e(TAG, "EventCtrlService#kickTerm inContext null");
+			return;
+		}
+		Intent intent = new Intent(inContext, EventCtrlService.class);
+		intent.putExtra(EXTRA_NAME_MODE, EXTRA_MODE_TERM);
+		try {
+			inContext.startService(intent);
+		} catch (SecurityException e) {
+			Log.e(TAG, "EventCtrlService#kickTerm startService", e);
+		}
+	}
+
 	@Override
 	public void onCreate()
 	{
@@ -70,22 +113,216 @@ public class EventCtrlService extends IntentService
 			Log.e(TAG, "EventCtrlService#onHandleIntent intent null");
 			return;
 		}
-		String mode = inIntent.getStringExtra(EXTRA_NAME_MODE);
-		if (null == mode)
+		int mode = inIntent.getIntExtra(EXTRA_NAME_MODE, EXTRA_MODE_UNKNOWN);
+		switch (mode)
 		{
-			Log.e(TAG, "EventCtrlService#onHandleIntent extra mode null");
-			return;
+		case EXTRA_MODE_INIT:
+			Log.d(TAG, "EventCtrlService#onHandleIntent MODE_INIT");
+			doInit();
+			break;
+		case EXTRA_MODE_RECEIVER:
+			Log.d(TAG, "EventCtrlService#onHandleIntent MODE_RECEIVER");
+			doReceiver();
+			break;
+		case EXTRA_MODE_TERM:
+			Log.d(TAG, "EventCtrlService#onHandleIntent MODE_TERM");
+			doTerm();
+			break;
+		default:	// EXTRA_MODE_UNKNOWN
+			Log.e(TAG, "EventCtrlService#onHandleIntent unknown mode");
+			break;
 		}
-		if ((0 == mode.compareTo(EXTRA_MODE_INIT)) ||
-			(0 == mode.compareTo(EXTRA_MODE_RECEIVER)))
+	}
+
+	private void doInit()
+	{
+		mBtAdr = EMPTY_STRING;
+
+		SharedPreferences pref = getSharedPreferences(
+														PREF_NAME,
+														MODE_PRIVATE | MODE_MULTI_PROCESS);
+		if (null == pref)
 		{
-			Log.d(TAG, "EventCtrlService#onHandleIntent " + mode);
+			Log.w(TAG, "EventCtrlService#doInit pref null");
 		}
 		else
 		{
-			Log.e(TAG, "EventCtrlService#onHandleIntent unknown mode");
+			mBtAdr  = pref.getString(PREF_KEY_BTADR, null);
+			if (null == mBtAdr)
+			{
+				Log.d(TAG, "EventCtrlService#doInit no BTADR");
+				mBtAdr = EMPTY_STRING;
+			}
+			else
+			{
+				Log.d(TAG, "EventCtrlService#doInit BTADR=" + mBtAdr);
+			}
+		}
+
+		startBtListen();
+	}
+
+	private void doReceiver()
+	{
+	}
+
+	private void doTerm()
+	{
+		stopBtListen();
+		
+		SharedPreferences pref = getSharedPreferences(
+														PREF_NAME,
+														MODE_PRIVATE | MODE_MULTI_PROCESS);
+		if (null == pref)
+		{
+			Log.w(TAG, "EventCtrlService#doTerm pref null");
+		}
+		else
+		{
+			SharedPreferences.Editor editor = pref.edit();
+			if (null == editor)
+			{
+				Log.w(TAG, "EventCtrlService#doTerm pref editor null");
+			}
+			else
+			{
+				editor.putString(PREF_KEY_BTADR, "A0:DD:E5:E5:1E:33");
+				editor.commit();
+				Log.d(TAG, "EventCtrlService#doInit dummy BTADR write");
+			}
+		}
+	}
+
+	private void startBtListen()
+	{
+		stopBtListen();
+
+		if (mBtAdr.isEmpty())
+		{
 			return;
+		}
+
+		mBtAcceptThread = new BtAcceptThread(mBtAdr);
+		if (null == mBtAcceptThread)
+		{
+			return;
+		}
+		mBtAcceptThread.start();
+	}
+
+	private void stopBtListen()
+	{
+		if (null == mBtAcceptThread)
+		{
+			return;
+		}
+
+		mBtAcceptThread.reqStop();
+		mBtAcceptThread = null;
+	}
+
+	private class BtAcceptThread extends Thread
+	{
+		private STATE mState = STATE.UNKNOWN;
+		private BluetoothServerSocket mBtss;
+		private String mBtAdr;
+
+		public BtAcceptThread(String btadr)
+		{
+			mState = STATE.INIT;
+			mBtss = null;
+			mBtAdr = btadr;
+		}
+
+		public void run()
+		{
+			Log.d(TAG, "BtAcceptThread#run start");
+			mState = STATE.START;
+
+			doRun();
+
+			mState = STATE.END;
+			mBtss = null;
+			Log.d(TAG, "BtAcceptThread#run end");
+		}
+
+		private void doRun()
+		{
+			{
+				BluetoothAdapter bta = BluetoothAdapter.getDefaultAdapter();
+				if (null == bta)
+				{
+					Log.e(TAG, "BtAcceptThread#doRun getDefaultAdapter null");
+					return;
+				}
+				
+				try
+				{
+					mBtss = bta.listenUsingRfcommWithServiceRecord(
+									BTSERVER_NAME,
+									BTSERVER_UUID);
+				}
+				catch (IOException e)
+				{
+					e.printStackTrace();
+				}
+			}
+			if (null == mBtss)
+			{
+				Log.e(TAG, "BtAcceptThread#doRun mBtss null");
+				return;
+			}
+			while (STATE.START == mState)
+			{
+				Log.d(TAG, "BtAcceptThread#doRun accept start");
+				try
+				{
+					BluetoothSocket bts = mBtss.accept();
+				}
+				catch (IOException e)
+				{
+					e.printStackTrace();
+				}
+				Log.d(TAG, "BtAcceptThread#doRun accept end");
+			}
+
+			Log.d(TAG, "BtAcceptThread#doRun close");
+			try
+			{
+				mBtss.close();
+			}
+			catch (IOException e)
+			{
+				e.printStackTrace();
+			}
+		}
+
+		public void reqStop()
+		{
+			Log.d(TAG, "BtAcceptThread#reqStop");
+			STATE state = mState;
+			BluetoothServerSocket btss = mBtss;
+			if (STATE.START != state)
+			{
+				Log.w(TAG, "BtAcceptThread#reqStop state=" + state);
+				return;
+			}
+			else
+			{
+				mState = STATE.STOP;
+			}
+			if (null != btss)
+			{
+				Log.d(TAG, "BtAcceptThread#reqStop close");
+				try
+				{
+					btss.close();
+				}
+				catch (IOException e)
+				{
+					e.printStackTrace();
+				}
+			}
 		}
 	}
 }
-
