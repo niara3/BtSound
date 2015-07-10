@@ -1,4 +1,4 @@
-﻿package com.niara3.btsound;
+package com.niara3.btsound;
 
 import android.bluetooth.*;
 import android.app.*;
@@ -260,6 +260,8 @@ public class EventCtrlService extends IntentService
 				try
 				{
 					BluetoothSocket bts = mBtss.accept();
+					BtInputThread btin = new BtInputThread(bts);
+					btin.start();
 				}
 				catch (IOException e)
 				{
@@ -281,27 +283,26 @@ public class EventCtrlService extends IntentService
 
 		private BluetoothServerSocket listen()
 		{
-			BluetoothServerSocket brss = null;
+			BluetoothServerSocket btss = null;
 			BluetoothAdapter bta = BluetoothAdapter.getDefaultAdapter();
 			if (null == bta)
 			{
 				Log.e(TAG, "BtAcceptThread#listen getDefaultAdapter null");
 				return null;
 			}
-			
+
 			try
 			{
 				btss = bta.listenUsingRfcommWithServiceRecord(
 								BTSERVER_NAME,
 								BTSERVER_UUID);
-
-				BtInputThread btin = new BtInputThread(btss);
-				btin.start();
 			}
 			catch (IOException e)
 			{
 				e.printStackTrace();
 			}
+
+			return btss;
 		}
 
 		public void reqStop()
