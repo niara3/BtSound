@@ -1,4 +1,4 @@
-package com.niara3.btsound;
+﻿package com.niara3.btsound;
 
 import android.bluetooth.*;
 import android.app.*;
@@ -225,7 +225,7 @@ public class EventCtrlService extends IntentService
 	{
 		private STATE mState = STATE.UNKNOWN;
 		private BluetoothServerSocket mBtss;
-		private String mBtAdr;
+		private String mBtAdr;	// 方針不明・・・
 
 		public BtAcceptThread(String btadr)
 		{
@@ -248,25 +248,7 @@ public class EventCtrlService extends IntentService
 
 		private void doRun()
 		{
-			{
-				BluetoothAdapter bta = BluetoothAdapter.getDefaultAdapter();
-				if (null == bta)
-				{
-					Log.e(TAG, "BtAcceptThread#doRun getDefaultAdapter null");
-					return;
-				}
-				
-				try
-				{
-					mBtss = bta.listenUsingRfcommWithServiceRecord(
-									BTSERVER_NAME,
-									BTSERVER_UUID);
-				}
-				catch (IOException e)
-				{
-					e.printStackTrace();
-				}
-			}
+			mBtss = listen();
 			if (null == mBtss)
 			{
 				Log.e(TAG, "BtAcceptThread#doRun mBtss null");
@@ -290,6 +272,31 @@ public class EventCtrlService extends IntentService
 			try
 			{
 				mBtss.close();
+			}
+			catch (IOException e)
+			{
+				e.printStackTrace();
+			}
+		}
+
+		private BluetoothServerSocket listen()
+		{
+			BluetoothServerSocket brss = null;
+			BluetoothAdapter bta = BluetoothAdapter.getDefaultAdapter();
+			if (null == bta)
+			{
+				Log.e(TAG, "BtAcceptThread#listen getDefaultAdapter null");
+				return null;
+			}
+			
+			try
+			{
+				btss = bta.listenUsingRfcommWithServiceRecord(
+								BTSERVER_NAME,
+								BTSERVER_UUID);
+
+				BtInputThread btin = new BtInputThread(btss);
+				btin.start();
 			}
 			catch (IOException e)
 			{
@@ -322,6 +329,57 @@ public class EventCtrlService extends IntentService
 				{
 					e.printStackTrace();
 				}
+			}
+		}
+	}
+
+	private class BtInputThread extends Thread
+	{
+		private STATE mState = STATE.UNKNOWN;
+		private BluetoothSocket mBts;
+
+		public BtInputThread(BluetoothSocket bts)
+		{
+			mState = STATE.INIT;
+			mBts = bts;
+		}
+
+		public void run()
+		{
+			Log.d(TAG, "BtInputThread#run start");
+			mState = STATE.START;
+
+			doRun();
+
+			mState = STATE.END;
+			mBts = null;
+			Log.d(TAG, "BtInputThread#run end");
+		}
+
+		private void doRun()
+		{
+			BluetoothSocket bts = mBts;
+			if (null == bts)
+			{
+				Log.e(TAG, "BtInputThread#doRun BluetoothSocket null");
+				return;
+			}
+
+			try
+			{
+				Thread.sleep(5000); //5000ミリ秒Sleepする
+			}
+			catch (InterruptedException e)
+			{
+			}
+
+			try
+			{
+				bts.close();
+			}
+			catch (IOException e)
+			{
+				e.printStackTrace();
 			}
 		}
 	}
